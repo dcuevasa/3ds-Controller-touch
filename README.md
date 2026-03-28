@@ -25,7 +25,6 @@ An up-to-date 3DS homebrew application that lets you use your Nintendo 3DS as a 
 ## Quickstart (DSU / Cemu)
 
 This project now acts as a DSU (Cemuhook) server directly on the 3DS.
-No separate `pc.py` receiver is required.
 
 1. Build the app (`make cia` or `make`) and install/run it on your 3DS.
 2. Make sure your 3DS and PC are on the same network.
@@ -170,10 +169,4 @@ make cia
 Output files:
 - `3ds_controller.3dsx` (Homebrew format)
 - `3ds_controller.cia` (installable CIA for FBI)
-
-# DSU Client Notes
-
-- Cemu is the main target and should work with the settings above.
-- Other DSU-compatible emulators may also work (for example Dolphin/RPCS3).
-- DSU protocol details are documented in `docs/DSU PROTOCOL.md`.
 
