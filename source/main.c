@@ -598,9 +598,11 @@ static void build_controller_payload(const config *cfg, const inputstate *state,
     float accelx = clampf((float)state->accel.x / ACCEL_RAW_TO_G, -8.0f, 8.0f);
     float accely = clampf((float)state->accel.y / ACCEL_RAW_TO_G, -8.0f, 8.0f);
     float accelz = clampf((float)state->accel.z / ACCEL_RAW_TO_G, -8.0f, 8.0f);
-    float gyropitch = clampf((float)state->gyro.x / GYRO_RAW_TO_DPS, -2000.0f, 2000.0f);
-    float gyroyaw = clampf((float)state->gyro.y / GYRO_RAW_TO_DPS, -2000.0f, 2000.0f);
-    float gyroroll = clampf((float)state->gyro.z / GYRO_RAW_TO_DPS, -2000.0f, 2000.0f);
+
+    // 2DS gyro axes do not map 1:1 to DSU pitch/yaw/roll.
+    float gyropitch = clampf(-(float)state->gyro.x / GYRO_RAW_TO_DPS, -2000.0f, 2000.0f);
+    float gyroyaw = clampf(-(float)state->gyro.z / GYRO_RAW_TO_DPS, -2000.0f, 2000.0f);
+    float gyroroll = clampf((float)state->gyro.y / GYRO_RAW_TO_DPS, -2000.0f, 2000.0f);
 
     accelx = apply_deadzone(accelx, ACCEL_DEADZONE_G);
     accely = apply_deadzone(accely, ACCEL_DEADZONE_G);
