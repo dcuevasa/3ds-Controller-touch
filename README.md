@@ -10,15 +10,6 @@ An up-to-date 3DS homebrew application that lets you use your Nintendo 3DS as a 
 - Battery level indicator
 - LCD toggle option to save battery
 
-## Q&A
-Q: Why Create this?
-- A: [A similar application](https://github.com/CTurt/3DSController) exists but is no longer maintained or functional.
-
-Q: Why is linux so much more complicated to setup?
-- A: i honestly don't fucking know. i'm not the person to ask.
-
-[![wakatime](https://wakatime.com/badge/user/5089f166-a996-455c-8cbe-f75a0e2076db.svg)](https://wakatime.com/@5089f166-a996-455c-8cbe-f75a0e2076db)
-
 ## Requirements
 
 ### 3DS
@@ -27,77 +18,70 @@ Q: Why is linux so much more complicated to setup?
 - Wi-Fi connection (same network as PC)
 
 ### PC
-- Windows or Linux
-- Python 3.6+
-- Windows: ViGEmBus driver
-- Linux: uinput kernel module
+- Cemu (or another DSU/Cemuhook-compatible client)
+- Same local network as your 3DS
+- Firewall rule allowing incoming UDP on port 26760 (if needed)
 
-## Installation
+## Quickstart (DSU / Cemu)
 
-### 3DS Setup
-1. Copy `3ds_controller.3dsx` to your 3DS SD card in `/3ds/` folder
-2. Launch Homebrew Launcher on your 3DS
-3. Run the 3DS Controller application
+This project now acts as a DSU (Cemuhook) server directly on the 3DS.
+No separate `pc.py` receiver is required.
 
-### PC Setup
+1. Build the app (`make cia` or `make`) and install/run it on your 3DS.
+2. Make sure your 3DS and PC are on the same network.
+3. Launch the app on your 3DS and keep it running.
+4. In Cemu, open Input settings and choose the DSU/Cemuhook client API (name can vary by version).
+5. Set DSU host to your 3DS IP and port to `26760`.
+6. Select slot `0`, apply settings, and test sticks/buttons/motion.
 
-#### Windows
-1. Install [ViGEmBus driver](https://github.com/ViGEm/ViGEmBus/releases)
-2. Install Python 3.6+
-3. Install required packages:
-   ```
-   pip install vgamepad
-   ```
-4. Run the PC receiver:
-   ```
-   python pc.py
-   ```
-
-#### Linux
-1. Load uinput module:
-   ```
-   sudo modprobe uinput
-   ```
-2. Install dependencies:
-   ```
-   sudo apt-get install libudev-dev
-   pip install python-uinput
-   ```
-3. Run PC receiver with root privileges:
-   ```
-   su -
-   modprobe python-uinput
-   python3 path/to/pc.py
-   ```
+If Cemu cannot connect:
+- Confirm both devices are on the same subnet.
+- Check that UDP port `26760` is not blocked by your firewall.
+- Set `targetip=0.0.0.0` in `config.ini` to allow all DSU clients.
 
 ## Usage
-1. Start PC receiver script
-2. Launch 3DS Controller on your 3DS
-3. Set the IP address in the 3DS app to match your PC's IP
-4. Connect and start using your 3DS as a controller
+1. Start the 3DS app.
+2. Connect from your DSU client (for example Cemu).
+3. Use Circle Pad/C-Stick/Buttons/Touch/Gyro in-game.
+4. Hold SELECT for about 5 seconds to toggle LCD backlight.
+5. Press START + SELECT to exit.
 
 ### Control Mapping
 
-| 3DS Input | PC Controller Output |
-|-----------|----------------------|
-| A/B/X/Y Buttons | A/B/X/Y Buttons |
-| Circle Pad | Left Analog Stick |
-| C-Stick | Right Analog Stick |
+| 3DS Input | DSU Output |
+|-----------|------------|
+| A/B/X/Y Buttons | Face buttons (Cross/Circle/Square/Triangle style) |
+| Circle Pad | Left analog stick |
+| C-Stick | Right analog stick |
 | D-Pad | D-Pad |
-| L/R Buttons | LB/RB (Left/Right Bumpers) |
-| ZL/ZR Buttons | LT/RT (Left/Right Triggers) |
-| Start/Select | Start/Back |
+| L/R Buttons | L1/R1 |
+| ZL/ZR Buttons | L2/R2 |
+| Start/Select | Options/Share |
+| Touchscreen | DS4 touch data |
+| Gyroscope + Accelerometer | DSU motion data |
 
 ## Configuration
 
 ### 3DS
 - Config file at `/config.ini` on SD card
-- Edit to change server IP and port
-- Default port: 8888
+- Optional: if missing, the app runs with built-in defaults
+- Supported keys:
+  - `targetip=<IPv4>` (enables IP filter only when explicitly set)
+   - `port=26760` (DSU default)
+   - `invertcpady=0`
+   - `invertcsticky=0`
+
+Built-in defaults when `config.ini` is missing:
+- IP filter: OFF (allow all clients)
+- Port: `26760`
+- `invertcpady=0`
+- `invertcsticky=0`
 
 ### PC
-- Listens on all interfaces on port 8888
-- Debug mode: `python pc.py --debug`
+- Configure your DSU client to connect to the 3DS server
+- Host/IP: your 3DS local IP
+- Port: `26760`
+- Slot: `0`
 
 ## Building from Source
 
@@ -108,90 +92,88 @@ Q: Why is linux so much more complicated to setup?
 - 3DS development libraries (libctru)
 - Make utility
 
-#### PC Application
-- Python 3.6+
-- Windows: ViGEmBus driver
-- Linux: uinput module and headers
+#### PC Side (DSU Client)
+- Cemu or another DSU/Cemuhook-compatible client
+- Same local network as the 3DS
+- UDP access to port 26760
 
-# Building 3DS Application (not that you care lol)
+## Complete WSL2 Ubuntu 24.04 Setup (devkitPro + 3DS)
 
-1. Install DevkitPro with 3DS support
-   ```
-   # Windows: Download from https://devkitpro.org/wiki/Getting_Started
+This is the recommended full setup for Ubuntu 24.04 on WSL2.
+It avoids the outdated install script path and follows modern APT keyring security requirements.
 
-   # Linux/macOS
-   wget https://apt.devkitpro.org/install-devkitpro-pacman
-   chmod +x ./install-devkitpro-pacman
-   sudo ./install-devkitpro-pacman
-   sudo dkp-pacman -S 3ds-dev
-   ```
+### Step 1: Update System and Install Basic Dependencies
+```bash
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y wget curl make git gnupg
+```
 
-2. Install CIA building tools (makerom and bannertool)
-   ```
-   # Windows
-   # Download makerom and bannertool from:
-   # - makerom: https://github.com/3DSGuy/Project_CTR/releases
-   # - bannertool: https://github.com/Steveice10/bannertool/releases
-   # Add both to your PATH
+### Step 2: Securely Add the devkitPro APT Repository
+The old devkitPro installer flow can fail on Ubuntu 24.04 due to stricter key handling.
+Use a signed keyring file instead.
 
-   # Linux/macOS
-   git clone https://github.com/3DSGuy/Project_CTR.git
-   cd Project_CTR/makerom
-   make
-   sudo cp makerom /usr/local/bin
+1. Download and convert the key:
+```bash
+sudo mkdir -p /usr/share/keyrings
+wget -qO- https://apt.devkitpro.org/devkitpro-pub.gpg | sudo gpg --dearmor --yes -o /usr/share/keyrings/devkitpro-archive-keyring.gpg
+```
 
-   git clone https://github.com/Steveice10/bannertool.git
-   cd bannertool
-   make
-   sudo cp output/*/bannertool /usr/local/bin
-   ```
+If the direct download fails, download `devkitpro-pub.gpg` manually and run:
+```bash
+sudo gpg --dearmor --yes -o /usr/share/keyrings/devkitpro-archive-keyring.gpg devkitpro-pub.gpg
+```
 
-3. Set environment variables (if needed)
-   ```
-   export DEVKITPRO=/opt/devkitpro
-   export DEVKITARM=${DEVKITPRO}/devkitARM
-   ```
+2. Add the signed repository entry:
+```bash
+echo "deb [signed-by=/usr/share/keyrings/devkitpro-archive-keyring.gpg] https://apt.devkitpro.org stable main" | sudo tee /etc/apt/sources.list.d/devkitpro.list
+```
 
-4. Clone repository
-   ```
-   git clone https://github.com/icicle1133/3ds-controller.git
-   cd 3ds-controller
-   ```
+### Step 3: Install devkitPro Pacman
+```bash
+sudo apt update
+sudo apt install -y devkitpro-pacman
+```
 
-5. Build application
-   ```
-   # For 3DSX file
-   make clean
-   make
+### Step 4: Install the Full 3DS Toolchain
+```bash
+sudo dkp-pacman -S 3ds-dev
+```
 
-   # For CIA file
-   make cia
-   ```
+Important notes:
+- Press Enter when prompted to select package groups (default: all).
+- Press Y to confirm install.
+- Do not append `makerom` or `bannertool` to that command.
+  - In this project, files named `makerom` and `bannertool` exist in the repository root.
+  - Appending those names can make pacman treat them as local file targets instead of packages.
 
-6. Output files:
-   - `3ds_controller.3dsx` (Homebrew format)
-   - `3ds_controller.cia` (CIA format for installation via FBI)
+### Step 5: Configure Environment Variables
+```bash
+echo 'export DEVKITPRO=/opt/devkitpro' >> ~/.bashrc
+echo 'export DEVKITARM=${DEVKITPRO}/devkitARM' >> ~/.bashrc
+echo 'export PATH=${DEVKITARM}/bin:${DEVKITPRO}/tools/bin:$PATH' >> ~/.bashrc
+source ~/.bashrc
+```
 
-# Development Setup
+You can verify the toolchain with:
+```bash
+arm-none-eabi-gcc --version
+```
 
-#### Windows
-1. Install Python 3.6+
-2. Install packages: `pip install vgamepad`
-3. Install ViGEmBus driver
-4. Run: `python pc.py`
+### Step 6: Build This Project and Generate .cia
+```bash
+cd ~/3ds-Controller-touch
+chmod +x makerom bannertool
+make clean
+make cia
+```
 
-#### Linux
-1. Install dependencies: `sudo apt-get install python3-dev libudev-dev`
-2. Install packages: `pip install python-uinput`
-3. Load uinput: `sudo modprobe uinput`
-4. Run: `sudo python pc.py`
+Output files:
+- `3ds_controller.3dsx` (Homebrew format)
+- `3ds_controller.cia` (installable CIA for FBI)
 
-# Project Status
+# DSU Client Notes
 
-### TO-DO
-- [ ] Add ability to save multiple server configurations
-- [ ] Add multiple device connections for local multiplayer
-- [ ] Re-add keyboard/touchscreen support like CTurt's 3ds Controller had.
+- Cemu is the main target and should work with the settings above.
+- Other DSU-compatible emulators may also work (for example Dolphin/RPCS3).
+- DSU protocol details are documented in `docs/DSU PROTOCOL.md`.
 
-## License
-This project is protected by the PolyForm Noncommercial License

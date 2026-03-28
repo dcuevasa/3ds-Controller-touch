@@ -1,0 +1,12 @@
+*.3dsx
+*.cia
+*.elf
+*.bin
+*.smdh
+*.gpg
+*.log
+*.zip
+
+# Ignore build artifacts
+/build/
+/obj/

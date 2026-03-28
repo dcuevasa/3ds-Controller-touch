@@ -88,35 +88,15 @@ static char *trim(char *text) {
     return text;
 }
 
-static void write_default_config_file(void) {
-    FILE *file = fopen(CONFIG_FILE, "w");
-    if (!file) {
-        printf("failed to create %s\n", CONFIG_FILE);
-        return;
-    }
-
-    fprintf(file, "# DSU (Cemuhook) server settings\n");
-    fprintf(file, "# targetip=0.0.0.0 means allow all clients\n");
-    fprintf(file, "targetip=0.0.0.0\n");
-    fprintf(file, "port=%d\n", DSU_DEFAULT_PORT);
-    fprintf(file, "invertcpady=0\n");
-    fprintf(file, "invertcsticky=0\n");
-    fclose(file);
-
-    printf("default %s created\n", CONFIG_FILE);
-}
-
 static void readconfigfile(config *cfg) {
-    strncpy(cfg->targetip, "0.0.0.0", sizeof(cfg->targetip) - 1);
-    cfg->targetip[sizeof(cfg->targetip) - 1] = '\0';
+    cfg->targetip[0] = '\0';
     cfg->port = DSU_DEFAULT_PORT;
     cfg->invertcpady = 0;
     cfg->invertcsticky = 0;
 
     FILE *file = fopen(CONFIG_FILE, "r");
     if (!file) {
-        printf("%s not found, using defaults\n", CONFIG_FILE);
-        write_default_config_file();
+        printf("%s not found, using built-in defaults (no IP filter)\n", CONFIG_FILE);
         return;
     }
 
@@ -252,6 +232,37 @@ static int is_sender_allowed(const config *cfg, const struct sockaddr_in *sender
     }
 
     return sender->sin_addr.s_addr == allowed.s_addr;
+}
+
+static void getlocalip(char *buffer, size_t size) {
+    if (!buffer || size == 0) {
+        return;
+    }
+
+    snprintf(buffer, size, "N/A");
+
+    struct in_addr ip;
+    struct in_addr netmask;
+    struct in_addr broadcast;
+
+    if (SOCU_GetIPInfo(&ip, &netmask, &broadcast) < 0 || ip.s_addr == 0) {
+        return;
+    }
+
+    const char *ipstr = inet_ntoa(ip);
+    if (ipstr) {
+        strncpy(buffer, ipstr, size - 1);
+        buffer[size - 1] = '\0';
+    }
+}
+
+static int istouchactiveraw(void) {
+    u32 id = hidSharedMem[42 + 4];
+    if (id > 7) {
+        id = 7;
+    }
+
+    return hidSharedMem[42 + 8 + id * 2 + 1] ? 1 : 0;
 }
 
 static u8 normalize_slot(u8 rawslot) {
@@ -569,8 +580,12 @@ static void build_controller_payload(const config *cfg, const inputstate *state,
                              (r2 << 1) |
                              (l2 << 0));
 
+#ifdef KEY_HOME
     const u8 home = (keys & KEY_HOME) ? 1 : 0;
-    const u8 touchbutton = state->touchactive ? 1 : 0;
+#else
+    const u8 home = 0;
+#endif
+    const u8 touchbutton = 0;
 
     const u8 lx = axis_to_byte(state->circlepad.dx, 156, 0);
     const u8 ly = axis_to_byte(state->circlepad.dy, 156, cfg->invertcpady);
@@ -692,11 +707,25 @@ static void getbatterystatus(char *buffer, size_t size) {
     }
 }
 
-static void printstatusmessage(const config *cfg, int socketready, int subscribers, int lcdstate) {
+static void printstatusmessage(const config *cfg,
+                               int socketready,
+                               int subscribers,
+                               int lcdstate,
+                               const char *localip,
+                               const inputstate *state) {
     consoleClear();
 
     char batterystatus[32];
     getbatterystatus(batterystatus, sizeof(batterystatus));
+
+    const char *ipfilter = (cfg->targetip[0] == '\0' || strcmp(cfg->targetip, "0.0.0.0") == 0) ? "OFF" : cfg->targetip;
+
+    char touchstatus[24];
+    if (state->touchactive) {
+        snprintf(touchstatus, sizeof(touchstatus), "ON id:%3u (%3d,%3d)", state->touchid, state->touch.px, state->touch.py);
+    } else {
+        snprintf(touchstatus, sizeof(touchstatus), "OFF");
+    }
 
     printf("\x1b[0;0H+------------------------------+");
     printf("\x1b[1;0H|   \x1b[1;36m3DS DSU (DUALSHOCK)\x1b[0m    |");
@@ -709,25 +738,27 @@ static void printstatusmessage(const config *cfg, int socketready, int subscribe
     }
 
     printf("\x1b[4;0H| Port: %-24d|", cfg->port);
-    printf("\x1b[5;0H| IP Filter: %-19s|", cfg->targetip);
-    printf("\x1b[6;0H| Subscribers: %-17d|", subscribers);
-    printf("\x1b[7;0H| Battery: %-20s|", batterystatus);
+        printf("\x1b[5;0H| IP Filter: %-19s|", ipfilter);
+    printf("\x1b[6;0H| Local IP: %-20s|", localip);
+    printf("\x1b[7;0H| Subscribers: %-17d|", subscribers);
+    printf("\x1b[8;0H| Battery: %-20s|", batterystatus);
+    printf("\x1b[9;0H| Touch: %-22s|", touchstatus);
 
     if (lcdstate) {
-        printf("\x1b[8;0H| Display: \x1b[32mON\x1b[0m                 |");
+        printf("\x1b[10;0H| Display: \x1b[32mON\x1b[0m                 |");
     } else {
-        printf("\x1b[8;0H| Display: \x1b[31mOFF\x1b[0m                |");
+        printf("\x1b[10;0H| Display: \x1b[31mOFF\x1b[0m                |");
     }
 
-    printf("\x1b[9;0H+------------------------------+");
-    printf("\x1b[10;0H| CirclePad -> Left Stick      |");
-    printf("\x1b[11;0H| C-Stick   -> Right Stick     |");
-    printf("\x1b[12;0H| Touchscreen -> DS4 Touchpad  |");
-    printf("\x1b[13;0H| Gyro+Accel -> DSU Motion     |");
-    printf("\x1b[14;0H| SELECT: Share / Hold LCD     |");
-    printf("\x1b[15;0H| START : Options              |");
-    printf("\x1b[16;0H| START+SELECT: Exit           |");
-    printf("\x1b[17;0H+------------------------------+");
+    printf("\x1b[11;0H+------------------------------+");
+    printf("\x1b[12;0H| CirclePad -> Left Stick      |");
+    printf("\x1b[13;0H| C-Stick   -> Right Stick     |");
+    printf("\x1b[14;0H| Touchscreen -> DS4 Touchpad  |");
+    printf("\x1b[15;0H| Gyro+Accel -> DSU Motion     |");
+    printf("\x1b[16;0H| SELECT: Share / Hold LCD     |");
+    printf("\x1b[17;0H| START : Options              |");
+    printf("\x1b[18;0H| START+SELECT: Exit           |");
+    printf("\x1b[19;0H+------------------------------+");
 }
 
 int main(int argc, char **argv) {
@@ -763,35 +794,43 @@ int main(int argc, char **argv) {
     u32 lcdtoggleheldtime = 0;
     u32 laststatusupdate = 0;
 
+    char localip[32] = "N/A";
+    getlocalip(localip, sizeof(localip));
+
     subscriber subscribers[MAX_SUBSCRIBERS];
     memset(subscribers, 0, sizeof(subscribers));
 
-    int was_touch_active = 0;
     u8 touch_id = 0;
+    int was_touch_active = 0;
 
     while (aptMainLoop()) {
         hidScanInput();
         u32 keysheld = hidKeysHeld();
+        u32 keysdown = hidKeysDown();
+        u32 keysup = hidKeysUp();
         u32 currenttime = osGetTime();
 
         if ((keysheld & KEY_START) && (keysheld & KEY_SELECT)) {
             break;
         }
 
-        if (keysheld & LCD_TOGGLE_KEY) {
-            if (lcdtoggleheldtime == 0) {
-                lcdtoggleheldtime = currenttime;
-            } else if (currenttime - lcdtoggleheldtime > LCD_TOGGLE_HOLD_TIME) {
-                lcdstate = !lcdstate;
-                if (lcdstate) {
-                    gspLcdInit();
-                    GSPLCD_PowerOnBacklight(GSPLCD_SCREEN_BOTH);
-                } else {
-                    GSPLCD_PowerOffBacklight(GSPLCD_SCREEN_BOTH);
-                }
-                lcdtoggleheldtime = currenttime;
+        if (keysdown & LCD_TOGGLE_KEY) {
+            lcdtoggleheldtime = currenttime;
+        }
+
+        if ((keysheld & LCD_TOGGLE_KEY) && lcdtoggleheldtime != 0 &&
+            (currenttime - lcdtoggleheldtime) >= LCD_TOGGLE_HOLD_TIME) {
+            lcdstate = !lcdstate;
+            if (lcdstate) {
+                gspLcdInit();
+                GSPLCD_PowerOnBacklight(GSPLCD_SCREEN_BOTH);
+            } else {
+                GSPLCD_PowerOffBacklight(GSPLCD_SCREEN_BOTH);
             }
-        } else {
+            lcdtoggleheldtime = currenttime;
+        }
+
+        if (keysup & LCD_TOGGLE_KEY) {
             lcdtoggleheldtime = 0;
         }
 
@@ -806,15 +845,25 @@ int main(int argc, char **argv) {
         hidCircleRead(&state.circlepad);
         hidCstickRead(&state.cstick);
 
-        state.touchactive = (keysheld & KEY_TOUCH) ? 1 : 0;
-        if (state.touchactive) {
-            hidTouchRead(&state.touch);
-            if (!was_touch_active) {
-                touch_id++;
+        hidTouchRead(&state.touch);
+        state.touchactive = (istouchactiveraw() || (keysheld & KEY_TOUCH)) ? 1 : 0;
+
+        if (state.touchactive && !was_touch_active) {
+            touch_id = (u8)((touch_id + 1u) & 0x7Fu);
+            if (touch_id == 0) {
+                touch_id = 1;
             }
         }
+
+        if (!state.touchactive) {
+            state.touch.px = 0;
+            state.touch.py = 0;
+            state.touchid = 0;
+        } else {
+            state.touchid = touch_id;
+        }
+
         was_touch_active = state.touchactive;
-        state.touchid = touch_id;
 
         hidAccelRead(&state.accel);
         hidGyroRead(&state.gyro);
@@ -828,8 +877,14 @@ int main(int argc, char **argv) {
         }
 
         int active_subscribers = count_active_subscribers(subscribers, nowms);
+
         if (currenttime - laststatusupdate > 500) {
-            printstatusmessage(&cfg, sockfd >= 0, active_subscribers, lcdstate);
+            printstatusmessage(&cfg,
+                               sockfd >= 0,
+                               active_subscribers,
+                               lcdstate,
+                               localip,
+                               &state);
             laststatusupdate = currenttime;
         }
 
